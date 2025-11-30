@@ -4,10 +4,10 @@ from openai import OpenAI
 
 # ---------- OpenAI client ----------
 def get_openai_client(api_key: str | None):
-    if api_key:
-        return OpenAI(api_key=api_key)
-    return OpenAI()  # uses environment variable if available
-
+    if not api_key:
+        st.error("Please enter your OpenAI API key in the sidebar.")
+        st.stop()
+    return OpenAI(api_key=api_key)
 
 # ---------- Extract text from file ----------
 def extract_text_from_file(uploaded_file) -> str:
@@ -22,11 +22,7 @@ def extract_text_from_file(uploaded_file) -> str:
 
     # PDF
     if file_type == "application/pdf":
-        try:
-            from PyPDF2 import PdfReader
-        except ImportError:
-            st.error("PyPDF2 missing. Add to requirements.txt")
-            return ""
+        from PyPDF2 import PdfReader
         reader = PdfReader(uploaded_file)
         text = ""
         for page in reader.pages:
@@ -35,17 +31,11 @@ def extract_text_from_file(uploaded_file) -> str:
 
     # DOCX
     if file_type == "application/vnd.openxmlformats-officedocument.wordprocessingml.document":
-        try:
-            import docx
-        except ImportError:
-            st.error("python-docx missing. Add to requirements.txt")
-            return ""
+        import docx
         doc = docx.Document(uploaded_file)
         return "\n".join(p.text for p in doc.paragraphs)
 
-    st.warning("Unsupported file type")
     return ""
-
 
 # ---------- AI analysis ----------
 def analyze_resume(client: OpenAI, resume_text: str, jd_text: str) -> dict:
@@ -74,7 +64,7 @@ RESUME:
 """
 
     response = client.chat.completions.create(
-        model="gpt-4.1-mini",
+        model="gpt-4o-mini",
         temperature=0.2,
         response_format={"type": "json_object"},
         messages=[
@@ -84,11 +74,7 @@ RESUME:
     )
 
     content = response.choices[0].message.content
-    try:
-        return json.loads(content)
-    except:
-        return {"error": "Invalid JSON from model", "raw": content}
-
+    return json.loads(content)
 
 # ---------- Streamlit UI ----------
 def main():
@@ -98,7 +84,7 @@ def main():
     st.write("Upload resume + paste job description → get match score, strengths, gaps & suggestions.")
 
     st.sidebar.header("⚙️ Configuration")
-    api_key = st.sidebar.text_input("OpenAI API Key (optional)", type="password")
+    api_key = st.sidebar.text_input("OpenAI API Key", type="password")
 
     col1, col2 = st.columns(2)
 
@@ -137,11 +123,6 @@ def main():
         with st.spinner("Analyzing..."):
             result = analyze_resume(client, resume_text, jd_text)
 
-        if "error" in result:
-            st.error("Model error: Could not parse response")
-            st.text(result["raw"])
-            return
-
         # Results
         st.subheader("📊 Match Summary")
         st.metric("Match Score", f"{result['match_score']}/100")
@@ -165,7 +146,6 @@ def main():
             st.markdown(f"- {sug}")
 
         st.write(f"**Recommended Role Level:** {result['recommended_role_level']}")
-
 
 if __name__ == "__main__":
     main()
